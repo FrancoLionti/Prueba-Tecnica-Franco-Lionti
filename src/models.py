@@ -1,7 +1,7 @@
 """
 Modelos de datos compartidos para todo el sistema RAG.
 
-Estos dataclasses son los "contenedores" que pasan datos entre capas:
+Estos dataclasses son los contenedores que pasan datos entre capas:
 - Document: representa un archivo leído y normalizado
 - Chunk: representa un fragmento de documento listo para indexar
 """

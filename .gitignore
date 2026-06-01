@@ -39,3 +39,8 @@ Archivos de Documentación/
 # ── Otros ──────────────────────────────────────────────
 *.log
 .pytest_cache/
+
+# ── Enunciados del ejercicio ──────────────────────────
+Prueba Tecnica Machine Learning Unilink.md
+Prueba Técnica Machine Learning Unilink.pdf
+
