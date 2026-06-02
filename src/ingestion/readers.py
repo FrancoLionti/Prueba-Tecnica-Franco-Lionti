@@ -12,10 +12,14 @@ pipeline para seleccionar automáticamente el reader correcto.
 """
 
 import json
+import logging
 import re
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Type
+
+# pyrefly: ignore [missing-import]
+import fitz  # PyMuPDF
 
 from src.ingestion.normalizer import normalize
 from src.models import Document
@@ -217,13 +221,49 @@ class JsonReader(DocumentReader):
         }
 
 
+class PdfReader(DocumentReader):
+    """
+    Lector de archivos .pdf usando PyMuPDF.
+
+    Extrae texto plano de cada página del PDF y lo concatena.
+    """
+
+    def read(self, path: Path) -> Document:
+        doc = fitz.open(str(path))
+        pages: list[str] = []
+
+        for page in doc:
+            text = page.get_text()
+            if text.strip():
+                pages.append(text)
+
+        doc.close()
+
+        content = normalize("\n\n".join(pages))
+
+        if not content:
+            raise ValueError(f"No se pudo extraer texto del PDF: {path.name}")
+
+        metadata = {
+            "format": "pdf",
+            "page_count": len(pages),
+        }
+
+        return Document(
+            content=content,
+            source_file=str(path),
+            file_type=".pdf",
+            metadata=metadata,
+        )
+
+
 # ── Registry ───────────────────────────────────────────────────────
 # Mapea extensiones a sus readers correspondientes.
-# Para agregar PDF: READERS[".pdf"] = PdfReader
 READERS: dict[str, Type[DocumentReader]] = {
     ".txt": TxtReader,
     ".md": MarkdownReader,
     ".json": JsonReader,
+    ".pdf": PdfReader,
 }
 
 
