@@ -5,10 +5,10 @@ Sistema de soporte técnico inteligente basado en **Retrieval-Augmented Generati
 ## Arquitectura
 
 ```
-┌─────────┐     ┌──────────┐     ┌──────────────┐     ┌──────────┐     ┌────────┐
-│  n8n    │────▶│ FastAPI  │────▶│  ChromaDB    │────▶│  OpenAI  │────▶│Respuesta│
-│ Webhook │     │  /ask    │     │ (búsqueda)   │     │ gpt-4o   │     │  JSON   │
-└─────────┘     └──────────┘     └──────────────┘     │  mini    │     └────────┘
+┌─────────┐     ┌──────────┐     ┌──────────────┐     ┌──────────┐      ┌─────────┐
+│  n8n    │───▶│ FastAPI  │────▶│  ChromaDB    │────▶│  OpenAI  │────▶│Respuesta│
+│ Webhook │     │  /ask    │     │ (búsqueda)   │     │ gpt-4o   │      │  JSON   │
+└─────────┘     └──────────┘     └──────────────┘     │  mini    │      └─────────┘
                                                       └──────────┘
 ```
 
