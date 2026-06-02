@@ -212,4 +212,4 @@ El requisito de usar OpenAI API se cumple en la generación de respuestas (gpt-4
 Los documentos se fragmentan en chunks de ~500 caracteres con 50 caracteres de overlap entre chunks consecutivos. Esto evita perder contexto en los bordes de cada fragmento.
 
 ### Prompt anti-alucinación
-El system prompt instruye al LLM a responder exclusivamente con información del contexto proporcionado. Si no encuentra información relevante, responde explícitamente que no la encontró en lugar d[...]
+El system prompt instruye al LLM a responder exclusivamente con información del contexto proporcionado. Si no encuentra información relevante, responde explícitamente que no la encontró en lugar de inventar una respuesta.
