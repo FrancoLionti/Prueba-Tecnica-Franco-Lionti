@@ -6,45 +6,35 @@ Sistema de soporte técnico inteligente basado en **Retrieval-Augmented Generati
 
 ```mermaid
 flowchart LR
-  %% ── Entradas ─────────────────────────────────────────────────────
-  user([Usuario]) -->|pregunta| n8n[n8n\nWebhook]
-  user -->|pregunta| api
+    Usuario([Usuario])
+    n8n[n8n Webhook]
+    FastAPI[FastAPI Python]
+    Retriever[Retriever: Búsqueda Semántica]
+    GPT[OpenAI GPT]
 
-  %% ── API (RAG) ────────────────────────────────────────────────────
-  subgraph api[FastAPI]
-    ask[POST /ask]\
-    ingest[POST /ingest]\
-    health[GET /health]
-  end
+    %% Flujo de Usuario a n8n
+    Usuario -->|"Pregunta via HTTP"| n8n
+    n8n -->|"Respuesta JSON"| Usuario
 
-  %% ── Flujo /ask ───────────────────────────────────────────────────
-  n8n -->|forward JSON| ask
+    %% Flujo de n8n a la API
+    n8n -->|"POST /ask"| FastAPI
+    FastAPI -->|"Respuesta"| n8n
 
-  ask -->|embed_texts()\n(all-MiniLM-L6-v2, local)| st[sentence-transformers]
-  st -->|query_embedding| ask
+    %% Subgrafo de Ingesta (Offline)
+    subgraph Ingesta ["Ingesta (offline)"]
+        direction LR
+        Docs["Docs (.txt, .md, .json)"]
+        Pipeline["Pipeline Python"]
+        Chroma["Vector Store (ChromaDB)"]
 
-  ask -->|VectorStore.search(top_k=RETRIEVAL_TOP_K)| chroma[(ChromaDB\nPersistentClient)]
-  chroma -->|chunks + distances| ask
+        Docs --> Pipeline
+        Pipeline -->|"Chunks + Embeddings"| Chroma
+    end
 
-  ask -->|context_chunks| llm[OpenAI Chat Completions\nmodel: gpt-4o-mini]
-  llm -->|answer| ask
-
-  ask --> resp[[AnswerResponse\n(answer + sources + model)]]
-
-  %% ── Flujo /ingest ────────────────────────────────────────────────
-  ingest -->|run_ingestion(clear_existing=True)| pipeline[Ingestion Pipeline]
-
-  subgraph pipeline[Ingestion Pipeline]
-    docs[docs/\n(SUPPORTED_EXTENSIONS)] --> readers[get_reader()\nreaders.*]
-    readers --> chunker[chunk_document()\n(CHUNK_SIZE + CHUNK_OVERLAP)]
-    chunker --> embed[embed_chunks()\n(all-MiniLM-L6-v2, local)]
-    embed --> index[VectorStore.index_chunks()]
-  end
-
-  index --> chroma
-
-  %% ── Health ───────────────────────────────────────────────────────
-  health -->|VectorStore.count| chroma
+    %% Conexiones internas de FastAPI
+    FastAPI --> Retriever
+    Retriever --> Chroma
+    FastAPI --> GPT
 ```
 
 **Flujo completo (alto nivel):**
