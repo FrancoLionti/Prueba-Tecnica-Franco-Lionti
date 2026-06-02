@@ -4,21 +4,56 @@ Sistema de soporte técnico inteligente basado en **Retrieval-Augmented Generati
 
 ## Arquitectura
 
-```
-┌─────────┐     ┌──────────┐     ┌──────────────┐     ┌──────────┐      ┌─────────┐
-│  n8n    │───▶│ FastAPI  │────▶│  ChromaDB    │────▶│  OpenAI  │────▶│Respuesta│
-│ Webhook │     │  /ask    │     │ (búsqueda)   │     │ gpt-4o   │      │  JSON   │
-└─────────┘     └──────────┘     └──────────────┘     │  mini    │      └─────────┘
-                                                      └──────────┘
+```mermaid
+flowchart LR
+  %% ── Entradas ─────────────────────────────────────────────────────
+  user([Usuario]) -->|pregunta| n8n[n8n\nWebhook]
+  user -->|pregunta| api
+
+  %% ── API (RAG) ────────────────────────────────────────────────────
+  subgraph api[FastAPI]
+    ask[POST /ask]\
+    ingest[POST /ingest]\
+    health[GET /health]
+  end
+
+  %% ── Flujo /ask ───────────────────────────────────────────────────
+  n8n -->|forward JSON| ask
+
+  ask -->|embed_texts()\n(all-MiniLM-L6-v2, local)| st[sentence-transformers]
+  st -->|query_embedding| ask
+
+  ask -->|VectorStore.search(top_k=RETRIEVAL_TOP_K)| chroma[(ChromaDB\nPersistentClient)]
+  chroma -->|chunks + distances| ask
+
+  ask -->|context_chunks| llm[OpenAI Chat Completions\nmodel: gpt-4o-mini]
+  llm -->|answer| ask
+
+  ask --> resp[[AnswerResponse\n(answer + sources + model)]]
+
+  %% ── Flujo /ingest ────────────────────────────────────────────────
+  ingest -->|run_ingestion(clear_existing=True)| pipeline[Ingestion Pipeline]
+
+  subgraph pipeline[Ingestion Pipeline]
+    docs[docs/\n(SUPPORTED_EXTENSIONS)] --> readers[get_reader()\nreaders.*]
+    readers --> chunker[chunk_document()\n(CHUNK_SIZE + CHUNK_OVERLAP)]
+    chunker --> embed[embed_chunks()\n(all-MiniLM-L6-v2, local)]
+    embed --> index[VectorStore.index_chunks()]
+  end
+
+  index --> chroma
+
+  %% ── Health ───────────────────────────────────────────────────────
+  health -->|VectorStore.count| chroma
 ```
 
-**Flujo completo:**
+**Flujo completo (alto nivel):**
 1. El usuario envía una pregunta vía webhook de n8n o directamente a la API
-2. La API genera un embedding de la pregunta (sentence-transformers, local)
-3. ChromaDB busca los fragmentos de documentación más relevantes
-4. Se arma un prompt con el contexto recuperado y se envía a OpenAI
-5. El LLM genera una respuesta basada exclusivamente en la documentación
-6. Se devuelve la respuesta con las fuentes citadas
+2. `/ask` genera el embedding con `sentence-transformers` (local)
+3. `ChromaDB` busca los chunks más similares (`VectorStore.search`, `RETRIEVAL_TOP_K`)
+4. Se arma `context_chunks` con texto + `source_file`
+5. Se llama a OpenAI (`gpt-4o-mini`) para generar la respuesta
+6. Se devuelve `AnswerResponse` con `answer`, `sources` (con relevancia) y `model`
 
 ## Stack Tecnológico
 
@@ -187,4 +222,4 @@ El requisito de usar OpenAI API se cumple en la generación de respuestas (gpt-4
 Los documentos se fragmentan en chunks de ~500 caracteres con 50 caracteres de overlap entre chunks consecutivos. Esto evita perder contexto en los bordes de cada fragmento.
 
 ### Prompt anti-alucinación
-El system prompt instruye al LLM a responder exclusivamente con información del contexto proporcionado. Si no encuentra información relevante, responde explícitamente que no la encontró en lugar de inventar.
+El system prompt instruye al LLM a responder exclusivamente con información del contexto proporcionado. Si no encuentra información relevante, responde explícitamente que no la encontró en lugar d[...]
