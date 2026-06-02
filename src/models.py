@@ -32,8 +32,7 @@ class Chunk:
     """
     Representa un fragmento de un documento, listo para ser embebido e indexado.
 
-    Esto lo necesito porque un documento completo puede ser demasiado largo como
-    para enviar como contexto al LLM. Seguramente sea necesario fragmentarlo,
+    Esto es necesario porque un documento completo puede ser demasiado largo como para enviar como contexto al LLM. Seguramente sea conveniente fragmentarlo,
     entonces se lo particiona en chunks que capturan
     una idea completa (ej: un error con su causa y solución).
 

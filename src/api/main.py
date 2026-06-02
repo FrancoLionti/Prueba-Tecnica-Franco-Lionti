@@ -22,6 +22,7 @@ from src.config import RETRIEVAL_TOP_K
 from src.ingestion.embedder import embed_texts
 from src.ingestion.pipeline import run_ingestion
 from src.ingestion.vector_store import VectorStore
+from src.llm.generator import generate_answer
 
 
 # ── Singleton del vector store ─────────────────────────────────────
@@ -63,10 +64,9 @@ app = FastAPI(
 async def ask_question(body: QuestionRequest):
     """
     Recibe una pregunta del usuario y devuelve una respuesta
-    basada en la documentación indexada.
+    generada por el LLM basándose en la documentación indexada.
 
-    Por ahora (Fase 4) devuelve los fragmentos relevantes sin
-    pasar por el LLM. En la Fase 5 se agrega la generación.
+    Flujo: pregunta → embedding → búsqueda en ChromaDB → contexto → LLM → respuesta
     """
     store = _get_store()
 
@@ -76,10 +76,10 @@ async def ask_question(body: QuestionRequest):
             detail="No hay documentación indexada. Ejecutar POST /ingest primero.",
         )
 
-    # Generar embedding de la pregunta
+    # 1. Generar embedding de la pregunta
     query_embedding = embed_texts([body.question])[0]
 
-    # Buscar los chunks más relevantes
+    # 2. Buscar los chunks más relevantes
     results = store.search(query_embedding, top_k=RETRIEVAL_TOP_K)
 
     if not results:
@@ -89,28 +89,35 @@ async def ask_question(body: QuestionRequest):
             model="none",
         )
 
-    # Armar las fuentes con su score de relevancia
+    # 3. Componer las fuentes con su score de relevancia
     sources = [
         SourceChunk(
             text=r.text,
             source_file=r.source_file,
-            # Convertir distancia coseno a similitud (1 - distancia)
             relevance=round(1 - r.distance, 4),
         )
         for r in results
     ]
 
-    # Fase 4: respuesta provisional con los fragmentos encontrados.
-    # En la Fase 5 esto se reemplaza por la respuesta del LLM.
-    context_preview = "\n---\n".join(
-        f"[{s.source_file}] (relevancia: {s.relevance})\n{s.text}"
+    # 4. Preparar contexto para el LLM
+    context_chunks = [
+        {"text": s.text, "source_file": s.source_file}
         for s in sources
-    )
+    ]
+
+    # 5. Generar respuesta del LLM
+    try:
+        llm_result = generate_answer(
+            question=body.question,
+            context_chunks=context_chunks,
+        )
+    except (ValueError, RuntimeError) as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
     return AnswerResponse(
-        answer=f"[Fase 4 — Sin LLM] Contexto recuperado:\n\n{context_preview}",
+        answer=llm_result["answer"],
         sources=sources,
-        model="retrieval-only",
+        model=llm_result.get("model", ""),
     )
 
 
