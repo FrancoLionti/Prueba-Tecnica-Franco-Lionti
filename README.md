@@ -76,9 +76,14 @@ flowchart LR
 │   ├── config.py          # Configuración centralizada
 │   └── models.py          # Dataclasses compartidos (Document, Chunk)
 ├── docs/                  # Documentación técnica a indexar
+├── tests/                 # Tests automatizados (pytest)
+│   ├── conftest.py        # Fixtures compartidas
+│   ├── test_normalizer.py # Tests del normalizador de texto
+│   ├── test_readers.py    # Tests de los lectores por formato
+│   ├── test_chunker.py    # Tests del chunker semántico
+│   └── test_api.py        # Tests de integración de la API
 ├── n8n/
 │   └── workflow.json      # Workflow exportable para n8n
-├── scripts/               # Scripts de testing por fase
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt
@@ -197,6 +202,28 @@ El sistema soporta los siguientes formatos de documentación:
 | `.md`   | MarkdownReader | Extrae títulos H1 y palabras clave |
 | `.json` | JsonReader | Convierte estructura JSON a texto legible |
 | `.pdf`  | PdfReader | Extrae texto con PyMuPDF (bonus) |
+
+## Testing
+
+El proyecto incluye tests automatizados con `pytest` que validan los componentes sin consumir tokens de OpenAI (usando mocks).
+
+```bash
+# Ejecutar todos los tests
+pytest tests/ -v
+
+# Ejecutar un módulo específico
+pytest tests/test_normalizer.py -v
+
+# Ejecutar con reporte de cobertura (requiere pytest-cov)
+pytest tests/ --cov=src --cov-report=term-missing
+```
+
+| Módulo de test | Qué valida |
+|----------------|------------|
+| `test_normalizer.py` | Limpieza unicode, colapso de whitespace, line endings |
+| `test_readers.py` | Lectura de .txt, .md, .json, metadata, factory |
+| `test_chunker.py` | Tamaño de chunks, overlap, metadata, edge cases |
+| `test_api.py` | Endpoints /health, /ask, /ingest con mocks |
 
 ## Decisiones de Diseño
 

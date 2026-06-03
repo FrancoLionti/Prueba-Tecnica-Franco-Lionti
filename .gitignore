@@ -38,6 +38,7 @@ Archivos de Documentación/
 
 # ── Otros ──────────────────────────────────────────────
 *.log
+tests/test_scripts/
 .pytest_cache/
 
 # ── Enunciados del ejercicio ──────────────────────────
