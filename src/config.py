@@ -36,6 +36,10 @@ CHUNK_OVERLAP = 50
 # Con documentación pequeña (4 archivos), 3 es suficiente.
 RETRIEVAL_TOP_K = 3
 
+# Umbral mínimo de relevancia (similitud coseno) para filtrar chunks ruidosos.
+# Chunks con similitud menor a este valor serán descartados del contexto.
+RETRIEVAL_MIN_RELEVANCE = 0.60
+
 # ── API ────────────────────────────────────────────────────────────
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", "8000"))

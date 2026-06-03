@@ -7,10 +7,12 @@ Endpoints:
 - GET  /health  → Estado del servicio
 """
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 
+from src.api.metrics import RequestMetrics, measure
 from src.api.schemas import (
     AnswerResponse,
     HealthResponse,
@@ -18,12 +20,14 @@ from src.api.schemas import (
     QuestionRequest,
     SourceChunk,
 )
-from src.config import RETRIEVAL_TOP_K
+from src.config import RETRIEVAL_MIN_RELEVANCE, RETRIEVAL_TOP_K
 from src.ingestion.embedder import embed_texts
 from src.ingestion.pipeline import run_ingestion
 from src.ingestion.vector_store import VectorStore
 from src.llm.generator import generate_answer
 
+# ── Logging ────────────────────────────────────────────────────────
+logger = logging.getLogger("rag.api")
 
 # ── Singleton del vector store ─────────────────────────────────────
 # Se inicializa una vez al arrancar y se reutiliza en todos los requests.
@@ -68,6 +72,7 @@ async def ask_question(body: QuestionRequest):
 
     Flujo: pregunta → embedding → búsqueda en ChromaDB → contexto → LLM → respuesta
     """
+    metrics = RequestMetrics(question_chars=len(body.question))
     store = _get_store()
 
     if store.count == 0:
@@ -77,19 +82,16 @@ async def ask_question(body: QuestionRequest):
         )
 
     # 1. Generar embedding de la pregunta
-    query_embedding = embed_texts([body.question])[0]
+    with measure("embedding") as emb_t:
+        query_embedding = embed_texts([body.question])[0]
+    metrics.embedding_latency_ms = emb_t["elapsed_ms"]
 
     # 2. Buscar los chunks más relevantes
-    results = store.search(query_embedding, top_k=RETRIEVAL_TOP_K)
+    with measure("retrieval") as ret_t:
+        results = store.search(query_embedding, top_k=RETRIEVAL_TOP_K)
+    metrics.retrieval_latency_ms = ret_t["elapsed_ms"]
 
-    if not results:
-        return AnswerResponse(
-            answer="No se encontró información relevante en la documentación.",
-            sources=[],
-            model="none",
-        )
-
-    # 3. Componer las fuentes con su score de relevancia
+    # 3. Componer las fuentes con su score de relevancia y filtrar por relevancia mínima
     sources = [
         SourceChunk(
             text=r.text,
@@ -98,26 +100,62 @@ async def ask_question(body: QuestionRequest):
         )
         for r in results
     ]
+    
+    # Filtrar chunks que no alcanzan el umbral de relevancia mínima
+    sources = [s for s in sources if s.relevance >= RETRIEVAL_MIN_RELEVANCE]
+
+    if not sources:
+        return AnswerResponse(
+            answer="No encontré información lo suficientemente relevante en la documentación para responder a tu pregunta.",
+            sources=[],
+            model="none",
+        )
+
+    metrics.chunks_retrieved = len(sources)
+    metrics.top_relevance = max(s.relevance for s in sources)
 
     # 4. Preparar contexto para el LLM
     context_chunks = [
         {"text": s.text, "source_file": s.source_file}
         for s in sources
     ]
+    metrics.context_chars = sum(len(c["text"]) for c in context_chunks)
 
     # 5. Generar respuesta del LLM
     try:
-        llm_result = generate_answer(
-            question=body.question,
-            context_chunks=context_chunks,
-        )
+        with measure("llm") as llm_t:
+            llm_result = generate_answer(
+                question=body.question,
+                context_chunks=context_chunks,
+            )
+        metrics.llm_latency_ms = llm_t["elapsed_ms"]
     except (ValueError, RuntimeError) as e:
         raise HTTPException(status_code=502, detail=str(e))
 
+    # 6. Completar métricas
+    answer_text = llm_result["answer"]
+    metrics.answer_chars = len(answer_text)
+    metrics.model = llm_result.get("model", "")
+    metrics.total_latency_ms = round(
+        metrics.embedding_latency_ms
+        + metrics.retrieval_latency_ms
+        + metrics.llm_latency_ms,
+        2,
+    )
+
+    usage = llm_result.get("usage", {})
+    metrics.prompt_tokens = usage.get("prompt_tokens", 0)
+    metrics.completion_tokens = usage.get("completion_tokens", 0)
+    metrics.total_tokens = usage.get("total_tokens", 0)
+
+    # 7. Emitir log estructurado de métricas
+    metrics.log()
+
     return AnswerResponse(
-        answer=llm_result["answer"],
+        answer=answer_text,
         sources=sources,
-        model=llm_result.get("model", ""),
+        model=metrics.model,
+        metrics=metrics.to_dict(),
     )
 
 

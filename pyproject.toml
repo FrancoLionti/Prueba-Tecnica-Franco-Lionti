@@ -1,0 +1,6 @@
+[tool.pytest.ini_options]
+# Solo recolectar tests unitarios (excluir test_scripts/ que son scripts
+# de fase que requieren el servidor levantado)
+testpaths = ["tests"]
+python_files = "test_*.py"
+addopts = "--ignore=tests/test_scripts"

@@ -201,6 +201,100 @@ class TestAskEndpoint:
         assert 0 <= source["relevance"] <= 1
         assert "source_file" in source
 
+    @patch("src.api.main.generate_answer")
+    @patch("src.api.main.embed_texts")
+    @patch("src.api.main._get_store")
+    def test_ask_returns_metrics(
+        self,
+        mock_store_fn: MagicMock,
+        mock_embed: MagicMock,
+        mock_generate: MagicMock,
+        client: TestClient,
+    ):
+        """La respuesta incluye métricas de observabilidad."""
+        mock_store = MagicMock()
+        mock_store.count = 5
+        mock_store.search.return_value = [
+            MagicMock(
+                text="Chunk relevante",
+                source_file="docs/test.txt",
+                chunk_index=0,
+                distance=0.25,
+                metadata={},
+            )
+        ]
+        mock_store_fn.return_value = mock_store
+        mock_embed.return_value = [[0.1] * 384]
+        mock_generate.return_value = {
+            "answer": "Respuesta generada.",
+            "model": "gpt-4o-mini",
+            "usage": {"prompt_tokens": 80, "completion_tokens": 30, "total_tokens": 110},
+        }
+
+        response = client.post(
+            "/ask",
+            json={"question": "Pregunta de prueba"},
+        )
+
+        data = response.json()
+        assert "metrics" in data
+        m = data["metrics"]
+
+        # Latencias presentes y no negativas
+        assert m["embedding_latency_ms"] >= 0
+        assert m["retrieval_latency_ms"] >= 0
+        assert m["llm_latency_ms"] >= 0
+        assert m["total_latency_ms"] >= 0
+
+        # Conteos de caracteres
+        assert m["question_chars"] == len("Pregunta de prueba")
+        assert m["context_chars"] > 0
+        assert m["answer_chars"] > 0
+
+        # Retrieval stats
+        assert m["chunks_retrieved"] == 1
+        assert 0 <= m["top_relevance"] <= 1
+
+        # Token usage del LLM
+        assert m["prompt_tokens"] == 80
+        assert m["completion_tokens"] == 30
+        assert m["total_tokens"] == 110
+
+    @patch("src.api.main.embed_texts")
+    @patch("src.api.main._get_store")
+    def test_ask_low_relevance_returns_not_found(
+        self,
+        mock_store_fn: MagicMock,
+        mock_embed: MagicMock,
+        client: TestClient,
+    ):
+        """Si los chunks encontrados tienen relevancia menor al umbral (0.60), se filtran y no se llama al LLM."""
+        mock_store = MagicMock()
+        mock_store.count = 5
+        # distance = 0.45 -> relevance = 1 - 0.45 = 0.55 (menor a RETRIEVAL_MIN_RELEVANCE = 0.60)
+        mock_store.search.return_value = [
+            MagicMock(
+                text="Chunk irrelevante",
+                source_file="docs/test.txt",
+                chunk_index=0,
+                distance=0.45,
+                metadata={},
+            )
+        ]
+        mock_store_fn.return_value = mock_store
+        mock_embed.return_value = [[0.1] * 384]
+
+        response = client.post(
+            "/ask",
+            json={"question": "Pregunta no relacionada"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "No encontré información lo suficientemente relevante" in data["answer"]
+        assert len(data["sources"]) == 0
+        assert data["model"] == "none"
+
 
 # ── POST /ingest ───────────────────────────────────────────────────
 

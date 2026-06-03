@@ -5,6 +5,8 @@ Pydantic valida automáticamente los datos entrantes y genera
 documentación OpenAPI (Swagger) a partir de los tipos definidos.
 """
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -38,6 +40,11 @@ class AnswerResponse(BaseModel):
     model: str = Field(
         default="",
         description="Modelo de LLM utilizado para generar la respuesta.",
+    )
+    metrics: dict[str, Any] | None = Field(
+        default=None,
+        description="Métricas de observabilidad: latencias (ms), "
+                    "tamaños (chars/tokens) y retrieval stats.",
     )
 
 

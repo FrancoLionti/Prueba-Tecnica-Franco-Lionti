@@ -62,7 +62,8 @@ flowchart LR
 ├── src/
 │   ├── api/               # API REST (FastAPI)
 │   │   ├── main.py        # Endpoints: /ask, /ingest, /health
-│   │   └── schemas.py     # Modelos Pydantic (request/response)
+│   │   ├── schemas.py     # Modelos Pydantic (request/response)
+│   │   └── metrics.py     # Observabilidad: latencias y métricas por request
 │   ├── ingestion/         # Pipeline de ingesta de documentos
 │   │   ├── readers.py     # Lectores por formato (TXT, MD, JSON, PDF)
 │   │   ├── normalizer.py  # Limpieza y normalización de texto
@@ -152,15 +153,39 @@ curl -X POST http://localhost:8000/ask \
 **Respuesta:**
 ```json
 {
-  "answer": "El mensaje de error es 'Error de conexión con el servidor de datos'. Las causas posibles son: ...",
+  "answer": "Para solucionar el error de conexión a la base de datos, sigue estos pasos:\n\n1. Verifica que el servidor de base de datos esté activo.\n2. Valida los parámetros de conexión: host, puerto, nombre de base de datos, usuario y contraseña.\n3. Confirma la conectividad de red.\n4. Revisa si el puerto de conexión está habilitado.\n5. Si el problema persiste, escala al administrador de base de datos.\n\nEsta información fue extraída de la documentación disponible (fuente: docs/Documentación 4.json).",
   "sources": [
     {
-      "text": "3.2 Error: no se puede conectar con la base de datos...",
+      "text": "3.2 Error: no se puede conectar con la base de datos\nMensaje mostrado\n\nError de conexión con el servidor de datos.\n\nCausas posibles\nServidor de base de datos apagado.\nParámetros de conexión incorrectos.\nPuerto bloqueado.\nCredenciales inválidas.\nProblemas de red interna.\nSolución\n\nRevisar la conexión de red, validar los parámetros de configuración y confirmar que el servicio de base de datos esté activo.\n\n3.3 Error: código de material duplicado\nMensaje mostrado",
       "source_file": "docs/Documentación 2.txt",
-      "relevance": 0.6837
+      "relevance": 0.7023
+    },
+    {
+      "text": "...Error de conexión con el servidor de datos. Causas posibles:\n- Servidor de base de datos apagado\n- Parámetros de conexión incorrectos\n- Puerto bloqueado\n- Credenciales inválidas\n- Problemas de red interna\nSolución:\n- Verificar que el servidor de base de datos esté activo\n- Validar host, puerto, nombre de base de datos, usuario y contraseña\n- Confirmar conectividad de red\n- Revisar si el puerto de conexión está habilitado\n- Escalar al administrador de base de datos si el problema persiste\nNivel de soporte: Nivel 2\nPalabras clave: base de datos, conexión, servidor, puerto, PostgreSQL, credenciales",
+      "source_file": "docs/Documentación 4.json",
+      "relevance": 0.6992
+    },
+    {
+      "text": "...MineCatalog\n\nMódulo: errores_frecuentes ID: ERR-DB-001\nCategoría: configuracion_servicios\nTítulo: No se puede conectar con la base de datos\nMensaje al usuario: Error de conexión con el servidor de datos.",
+      "source_file": "docs/Documentación 4.json",
+      "relevance": 0.5476
     }
   ],
-  "model": "gpt-4o-mini"
+  "model": "gpt-4o-mini",
+  "metrics": {
+    "embedding_latency_ms": 13.58,
+    "retrieval_latency_ms": 4.50,
+    "llm_latency_ms": 2028.27,
+    "total_latency_ms": 2046.35,
+    "question_chars": 56,
+    "context_chars": 1275,
+    "answer_chars": 525,
+    "chunks_retrieved": 3,
+    "top_relevance": 0.7023,
+    "prompt_tokens": 632,
+    "completion_tokens": 126,
+    "total_tokens": 758
+  }
 }
 ```
 
@@ -224,6 +249,22 @@ pytest tests/ --cov=src --cov-report=term-missing
 | `test_readers.py` | Lectura de .txt, .md, .json, metadata, factory |
 | `test_chunker.py` | Tamaño de chunks, overlap, metadata, edge cases |
 | `test_api.py` | Endpoints /health, /ask, /ingest con mocks |
+
+## Observabilidad
+
+Cada request a `/ask` incluye métricas de telemetría en el campo `metrics` de la respuesta:
+
+| Métrica | Qué mide |
+|---------|----------|
+| `embedding_latency_ms` | Tiempo de generar el embedding de la pregunta |
+| `retrieval_latency_ms` | Tiempo de búsqueda en ChromaDB |
+| `llm_latency_ms` | Tiempo de llamada a OpenAI |
+| `total_latency_ms` | Suma de las tres etapas |
+| `question_chars` / `context_chars` / `answer_chars` | Tamaños como proxy de tokens |
+| `chunks_retrieved` / `top_relevance` | Estadísticas de retrieval |
+| `prompt_tokens` / `completion_tokens` / `total_tokens` | Uso real de tokens (OpenAI) |
+
+Estas métricas se emiten también como logs estructurados JSON, compatibles con plataformas de observabilidad (Langfuse, Datadog, ELK).
 
 ## Decisiones de Diseño
 
