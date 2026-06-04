@@ -30,7 +30,8 @@
       "name": "Consulta a FastAPI",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [500, 300]
+      "position": [500, 300],
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -78,6 +79,13 @@
         [
           {
             "node": "Respuesta al Usuario",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respuesta de Error",
             "type": "main",
             "index": 0
           }
